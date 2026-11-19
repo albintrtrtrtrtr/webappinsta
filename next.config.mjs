@@ -9,6 +9,18 @@ const nextConfig = {
       },
     ],
   },
+  async rewrites() {
+    return [
+      {
+        source: '/en',
+        destination: '/',
+      },
+      {
+        source: '/en/:path*',
+        destination: '/:path*',
+      },
+    ];
+  },
 };
 
 export default nextConfig;

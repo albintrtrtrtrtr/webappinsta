@@ -14,29 +14,55 @@ interface NavbarProps {
 
 export function Navbar({ onOpenProfile }: NavbarProps) {
   const [session, setSession] = useState<GuestSession | null>(null);
-  const [onlineCount, setOnlineCount] = useState<number>(12);
+  const [onlineCount, setOnlineCount] = useState<number | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
 
   useEffect(() => {
     setSession(getGuestSession());
 
-    // Fetch active players count from Supabase
+    // Fetch genuine active players count from Supabase
     const fetchActiveCount = async () => {
       try {
-        const { count, error } = await supabase
-          .from('lobby_players')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'active');
+        const [{ count: lobbyCount, error: err1 }, { count: roomCount, error: err2 }] =
+          await Promise.all([
+            supabase
+              .from('lobby_players')
+              .select('*', { count: 'exact', head: true })
+              .eq('status', 'active'),
+            supabase
+              .from('room_players')
+              .select('*', { count: 'exact', head: true }),
+          ]);
 
-        if (!error && count !== null && count > 0) {
-          setOnlineCount(count + 14); // Baseline active room count
+        if (!err1 || !err2) {
+          const total = (lobbyCount || 0) + (roomCount || 0);
+          setOnlineCount(total);
         }
-      } catch {}
+      } catch {
+        // Fallback if disconnected
+        setOnlineCount(0);
+      }
     };
 
     fetchActiveCount();
-    const interval = setInterval(fetchActiveCount, 20000);
-    return () => clearInterval(interval);
+    const interval = setInterval(fetchActiveCount, 15000);
+
+    // Subscribe to live lobby player presence changes
+    const channel = supabase
+      .channel('public_presence')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'lobby_players' },
+        () => {
+          fetchActiveCount();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const toggleSound = () => {
@@ -70,7 +96,9 @@ export function Navbar({ onOpenProfile }: NavbarProps) {
           <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-midnight-900 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <Users className="w-3.5 h-3.5 ml-0.5" />
-            <span>{onlineCount} in Party</span>
+            <span>
+              {onlineCount !== null ? `${onlineCount} in Party` : 'Live Online'}
+            </span>
           </div>
 
           <button

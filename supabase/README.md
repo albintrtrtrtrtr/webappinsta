@@ -23,123 +23,80 @@ This document provides step-by-step instructions for executing the complete Post
 2. Sign in to your Supabase account if prompted.
 
 ### Step 2: Navigate to the SQL Editor
-1. In the left-hand navigation sidebar, look for the **SQL Editor** icon (`>_` code brackets).
-2. Click on **SQL Editor**.
+1. In the left-hand navigation sidebar, click on the **SQL Editor** icon (`>_` code brackets).
 
 ### Step 3: Open a New Query
-1. Click the **"+ New Query"** button at the top of the SQL Editor view (or use the direct URL: [https://supabase.com/dashboard/project/vgcmqzcsmndjkclbkjok/sql/new](https://supabase.com/dashboard/project/vgcmqzcsmndjkclbkjok/sql/new)).
+1. Click the **"+ New Query"** button at the top of the SQL Editor view (or visit [https://supabase.com/dashboard/project/vgcmqzcsmndjkclbkjok/sql/new](https://supabase.com/dashboard/project/vgcmqzcsmndjkclbkjok/sql/new)).
 2. An empty query editor will appear.
-3. Optionally rename the tab to `InstaGame Complete Setup`.
+3. Name the tab `InstaGame Complete Setup`.
 
 ### Step 4: Copy and Execute `setup.sql`
 1. Open the file `supabase/setup.sql` in your IDE or code editor.
 2. Select the entire contents of `supabase/setup.sql` (`Ctrl+A` / `Cmd+A`) and copy it (`Ctrl+C` / `Cmd+C`).
 3. Paste the SQL code into the Supabase query editor window (`Ctrl+V` / `Cmd+V`).
 4. Click the green **"Run"** button in the lower-right corner (or press `Ctrl+Enter` / `Cmd+Enter`).
-5. Wait for the query to execute. You should see a confirmation message:
+5. Execution takes approximately 2–4 seconds. You should see a confirmation message:
    ```text
    Success. No rows returned
    ```
-   *(or a list of affected rows)*.
 
 ---
 
-## 3. How to Verify the Database Setup
+## 3. Secure Administrator Provisioning
 
-### A. Verify Tables (24 Tables)
-1. In the left-hand navigation sidebar, click on **Table Editor** (spreadsheet table icon).
-2. Check that the `public` schema contains all **24 tables**:
-   - `profiles`
-   - `guest_sessions`
-   - `player_preferences`
-   - `game_catalog`
-   - `game_events`
-   - `game_questions`
-   - `lobbies`
-   - `lobby_players`
-   - `private_rooms`
-   - `teams`
-   - `room_players`
-   - `team_scores`
-   - `game_sessions`
-   - `game_rounds`
-   - `game_answers`
-   - `game_votes`
-   - `player_reactions`
-   - `matches`
-   - `chat_messages`
-   - `story_results`
-   - `referrals`
-   - `reports`
-   - `blocked_users`
-   - `admin_users`
+All hardcoded administrator credentials, static passkeys, and insecure seed records have been completely removed.
 
-3. Click on `game_catalog` and verify that the 6 core games are populated:
-   - `red_flag_trial` (The Red Flag Trial)
-   - `crush_detector` (Crush Detector)
-   - `blind_confession` (The Blind Confession)
-   - `how_well_know_me` (How Well Do You Know Me?)
-   - `couple_chaos` (Couple Chaos)
-   - `partner_telepathy` (Partner Telepathy)
+To provision your initial Superadmin account securely:
 
-### B. Verify Realtime Configuration
-1. Go to **Database** -> **Replication** (or **Project Settings** -> **API** -> **Realtime**).
-2. Check the `supabase_realtime` publication.
-3. Verify that the following 12 tables have replication enabled:
-   - `lobbies`
-   - `lobby_players`
-   - `private_rooms`
-   - `room_players`
-   - `teams`
-   - `team_scores`
-   - `game_sessions`
-   - `game_rounds`
-   - `game_answers`
-   - `game_votes`
-   - `player_reactions`
-   - `chat_messages`
+### Step 1: Obtain Your User ID
+- If you have an authenticated account in **Authentication** -> **Users**, copy your user UUID.
+- Or use any preferred unique administrative handle (e.g. `admin_super`).
 
-### C. Verify Database Functions (RPC)
-1. In the left-hand navigation sidebar, click on **Database** -> **Functions**.
-2. Confirm the presence of the 13 secure authoritative RPC functions:
-   - `upsert_player_profile`
-   - `create_public_lobby`
-   - `join_lobby`
-   - `leave_lobby`
-   - `create_private_room`
-   - `join_private_room`
-   - `pair_room_partners`
-   - `start_game_session`
-   - `submit_game_answer`
-   - `record_game_vote`
-   - `advance_game_round`
-   - `create_mutual_match`
-   - `record_story_result`
+### Step 2: Execute the One-Time Provisioning RPC
+In a new query tab in the SQL Editor, execute:
 
----
+```sql
+SELECT public.provision_initial_admin(
+  '<YOUR_USER_ID_OR_AUTH_UUID>',
+  'admin@yourdomain.com'
+);
+```
 
-## 4. Troubleshooting & FAQ
-
-### Issue 1: "relation ... already exists"
-- **Cause**: Some tables were previously created.
-- **Solution**: The script uses `CREATE TABLE IF NOT EXISTS` and `ON CONFLICT` clauses so it is non-destructive and safe to rerun.
-
-### Issue 2: "publication 'supabase_realtime' does not exist"
-- **Cause**: Supabase Realtime publication wasn't initialized yet.
-- **Solution**: The script includes a safe conditional block:
+**Security Safeguards:**
+- This function works **only once**: it succeeds only when the `public.admin_users` table is completely empty (0 rows).
+- Once provisioned, further calls are automatically rejected:
+  `Initial administrator already provisioned. Subsequent administrators must be promoted by an existing superadmin.`
+- To promote additional moderators or admins later, your superadmin calls:
   ```sql
-  DO $$
-  BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
-      CREATE PUBLICATION supabase_realtime;
-    END IF;
-  END $$;
+  SELECT public.promote_user_to_admin(
+    '<TARGET_USER_ID>',
+    'moderator@yourdomain.com',
+    'moderator',
+    '<YOUR_SUPERADMIN_ID>'
+  );
   ```
-  This creates the publication automatically if missing.
+- Client-side inserts/updates into `admin_users` are blocked by Row Level Security policies.
 
-### Issue 3: "permission denied for schema public"
-- **Cause**: Executed under an unprivileged role.
-- **Solution**: Ensure you are running the script in the **Supabase Dashboard SQL Editor** while signed in as the project owner / administrator (runs under the privileged `postgres` superuser role).
+---
+
+## 4. Verification & Health Check Queries
+
+Run the following quick query in the SQL Editor to verify the installation:
+
+```sql
+-- Verify table counts and catalogue data
+SELECT 
+  (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public') AS total_tables,
+  (SELECT COUNT(*) FROM public.game_catalog) AS total_games,
+  (SELECT COUNT(*) FROM public.game_questions) AS total_seed_questions,
+  (SELECT COUNT(*) FROM pg_publication_rel pr JOIN pg_publication p ON pr.prpubid = p.oid WHERE p.pubname = 'supabase_realtime') AS realtime_tables_count;
+```
+
+**Expected Results:**
+- `total_tables`: ≥ 24
+- `total_games`: 6
+- `total_seed_questions`: 24
+- `realtime_tables_count`: 12
 
 ---
 
@@ -154,3 +111,24 @@ This document provides step-by-step instructions for executing the complete Post
 | **Live Game Engine** | `game_sessions`, `game_rounds`, `game_answers`, `game_votes` | Authoritative server rounds, timers, secret answer locking, privacy masking, and consensus scoring. |
 | **Social Chaos** | `player_reactions`, `chat_messages` | Live floating reactions (😂 ❤️ 🔥 👀 💀 😭 👏) and waiting room banter. |
 | **Virality & Sharing** | `matches`, `story_results`, `referrals` | Consent-based crush unlocks, 1080x1920 Instagram Story Cards, and trackable referral codes. |
+
+---
+
+## 6. Authoritative Database Functions (16 RPCs)
+
+1. `public.upsert_player_profile` - Seamless profile creation & session heartbeat.
+2. `public.create_public_lobby` - Matchmaking lounge initialization.
+3. `public.join_lobby` - Capacity-safe lounge entry.
+4. `public.leave_lobby` - Player departure and host auto-reelection.
+5. `public.create_private_room` - Unique 4-character room code generation.
+6. `public.join_private_room` - Team balancing and private room entry.
+7. `public.start_game_session` - Server-authoritative game start transition.
+8. `public.advance_game_round` - Phase synchronizer (answering → voting → reveal → scoring).
+9. `public.submit_game_answer` - Prevents double submissions; enforces secret answer locking.
+10. `public.submit_game_vote` - Rejects self-voting; records consensus votes.
+11. `public.create_mutual_match` - Mutual consent match generator with duplicate pair protection.
+12. `public.complete_game_session` - Finalizes game status and archives score distributions.
+13. `public.create_story_share` - Generates viral 12-char token for Instagram Story Cards.
+14. `public.is_admin` - Fast cached admin verification for RLS policies.
+15. `public.provision_initial_admin` - One-time bootstrap function for project owner.
+16. `public.promote_user_to_admin` - Superadmin-only role promotion and delegation.
