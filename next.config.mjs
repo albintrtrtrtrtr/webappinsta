@@ -10,16 +10,20 @@ const nextConfig = {
     ],
   },
   async rewrites() {
-    return [
-      {
-        source: '/en',
-        destination: '/',
-      },
-      {
-        source: '/en/:path*',
-        destination: '/:path*',
-      },
-    ];
+    return {
+      beforeFiles: [],
+      afterFiles: [
+        {
+          source: '/en',
+          destination: '/',
+        },
+        {
+          source: '/en/:path*',
+          destination: '/:path*',
+        },
+      ],
+      fallback: [],
+    };
   },
 };
 

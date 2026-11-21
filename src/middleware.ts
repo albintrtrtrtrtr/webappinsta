@@ -2,34 +2,35 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  try {
+    const { pathname } = request.nextUrl;
 
-  // Handle /en prefix rewriting cleanly
-  if (pathname === '/en') {
-    const url = request.nextUrl.clone();
-    url.pathname = '/';
-    return NextResponse.rewrite(url);
+    // Direct root access must always pass through cleanly
+    if (pathname === '/') {
+      return NextResponse.next();
+    }
+
+    // Support /en locale alias by rewriting to root without redirect loop
+    if (pathname === '/en') {
+      const url = request.nextUrl.clone();
+      url.pathname = '/';
+      return NextResponse.rewrite(url);
+    }
+
+    if (pathname.startsWith('/en/')) {
+      const url = request.nextUrl.clone();
+      url.pathname = pathname.replace(/^\/en/, '') || '/';
+      return NextResponse.rewrite(url);
+    }
+
+    return NextResponse.next();
+  } catch (err) {
+    console.error('Middleware execution error:', err);
+    return NextResponse.next();
   }
-
-  if (pathname.startsWith('/en/')) {
-    const url = request.nextUrl.clone();
-    url.pathname = pathname.replace(/^\/en/, '') || '/';
-    return NextResponse.rewrite(url);
-  }
-
-  return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - manifest.json (PWA manifest)
-     */
-    '/((?!api|_next/static|_next/image|favicon.ico|manifest.json).*)',
-  ],
+  // Only match routes that start with /en to prevent intercepting root or standard routes
+  matcher: ['/en', '/en/:path*'],
 };

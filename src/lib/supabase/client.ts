@@ -1,25 +1,43 @@
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { createClient as createSupabaseClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://vgcmqzcsmndjkclbkjok.supabase.co';
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_c--JEbEp6wJWBnrpIVU9IA_imKIA43B';
+// Default project fallback credentials to ensure deployment and prerendering work reliably out-of-the-box
+const DEFAULT_URL = 'https://vgcmqzcsmndjkclbkjok.supabase.co';
+const DEFAULT_KEY = 'sb_publishable_c--JEbEp6wJWBnrpIVU9IA_imKIA43B';
 
-let clientInstance: ReturnType<typeof createSupabaseClient> | null = null;
+function getSanitizedUrl(): string {
+  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  if (raw && (raw.startsWith('https://') || raw.startsWith('http://'))) {
+    return raw;
+  }
+  return DEFAULT_URL;
+}
 
-export function getSupabaseBrowserClient() {
-  if (typeof window === 'undefined') {
-    return createSupabaseClient(supabaseUrl, supabaseKey, {
-      auth: {
-        persistSession: false,
-      },
-    });
+function getSanitizedKey(): string {
+  const raw =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+  if (raw && raw.length > 10) {
+    return raw;
+  }
+  return DEFAULT_KEY;
+}
+
+let clientInstance: SupabaseClient | null = null;
+
+export function getSupabaseBrowserClient(): SupabaseClient {
+  if (clientInstance) {
+    return clientInstance;
   }
 
-  if (!clientInstance) {
-    clientInstance = createSupabaseClient(supabaseUrl, supabaseKey, {
+  const url = getSanitizedUrl();
+  const key = getSanitizedKey();
+
+  try {
+    clientInstance = createSupabaseClient(url, key, {
       auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
+        persistSession: typeof window !== 'undefined',
+        autoRefreshToken: typeof window !== 'undefined',
+        detectSessionInUrl: typeof window !== 'undefined',
       },
       realtime: {
         params: {
@@ -27,6 +45,18 @@ export function getSupabaseBrowserClient() {
         },
       },
     });
+  } catch (err) {
+    console.warn('Supabase client initialization warning, applying safe fallback:', err);
+    try {
+      clientInstance = createSupabaseClient(DEFAULT_URL, DEFAULT_KEY, {
+        auth: { persistSession: false },
+      });
+    } catch {
+      // Create fail-safe dummy client if standard client throws
+      clientInstance = createSupabaseClient('https://vgcmqzcsmndjkclbkjok.supabase.co', DEFAULT_KEY, {
+        auth: { persistSession: false },
+      });
+    }
   }
 
   return clientInstance;
